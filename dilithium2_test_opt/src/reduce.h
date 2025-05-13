@@ -9,13 +9,6 @@
 
 #define montgomery_reduce DILITHIUM_NAMESPACE(montgomery_reduce)
 int32_t montgomery_reduce(int64_t a);
-/*static inline int32_t montgomery_reduce(int64_t a) {
-  int32_t t;
-  t = (int32_t)(a * QINV);
-  t = (int32_t)((a - (int64_t)t * Q) >> 32);
-  return t;
-}*/
-
 
 #define reduce32 DILITHIUM_NAMESPACE(reduce32)
 int32_t reduce32(int32_t a);

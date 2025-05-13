@@ -10,7 +10,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #ifdef __linux__
-
+#define _GNU_SOURCE
 #include <unistd.h>
 #include <sys/syscall.h>
 #else

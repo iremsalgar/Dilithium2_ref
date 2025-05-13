@@ -36,15 +36,8 @@ int32_t power2round(int32_t *a0, int32_t a)  {
 *
 * Returns a1.
 **************************************************/
-#include <stdio.h>
-
 int32_t decompose(int32_t *a0, int32_t a) {
   int32_t a1;
-static int warn_once = 1;
-if ((a < -10000000 || a > 10000000) && warn_once) {
-  printf("DECOMPOSE WARNING: a=%d (abnormal value)\n", a);
-  warn_once = 0;
-}
 
   a1  = (a + 127) >> 7;
 #if GAMMA2 == (Q-1)/32
@@ -54,11 +47,6 @@ if ((a < -10000000 || a > 10000000) && warn_once) {
   a1  = (a1*11275 + (1 << 23)) >> 24;
   a1 ^= ((43 - a1) >> 31) & a1;
 #endif
-if ((a < -10000000 || a > 10000000) && warn_once) {
-  printf("DECOMPOSE WARNING: a=%d (abnormal value)\n", a);
-  warn_once = 0;
-}
-
 
   *a0  = a - a1*2*GAMMA2;
   *a0 -= (((Q-1)/2 - *a0) >> 31) & Q;

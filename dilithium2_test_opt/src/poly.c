@@ -140,7 +140,7 @@ void poly_invntt_tomont(poly *a) {
   DBENCH_START();
 
   invntt_tomont(a->coeffs);
-  poly_reduce(a);
+
   DBENCH_STOP(*tmul);
 }
 
@@ -155,8 +155,7 @@ void poly_invntt_tomont(poly *a) {
 *              - const poly *a: pointer to first input polynomial
 *              - const poly *b: pointer to second input polynomial
 **************************************************/
-
-  void poly_pointwise_montgomery(poly *c, const poly *a, const poly *b) {
+void poly_pointwise_montgomery(poly *c, const poly *a, const poly *b) {
   unsigned int i;
   DBENCH_START();
 
@@ -165,22 +164,6 @@ void poly_invntt_tomont(poly *a) {
 
   DBENCH_STOP(*tmul);
 }
-
-/*
-void poly_pointwise_montgomery(poly *c, const poly *a, const poly *b) {
-  for (unsigned int i = 0; i < N; i += 4) {
-    int64_t t0 = (int64_t)a->coeffs[i + 0] * b->coeffs[i + 0];
-    int64_t t1 = (int64_t)a->coeffs[i + 1] * b->coeffs[i + 1];
-    int64_t t2 = (int64_t)a->coeffs[i + 2] * b->coeffs[i + 2];
-    int64_t t3 = (int64_t)a->coeffs[i + 3] * b->coeffs[i + 3];
-
-    c->coeffs[i + 0] = montgomery_reduce(t0);
-    c->coeffs[i + 1] = montgomery_reduce(t1);
-    c->coeffs[i + 2] = montgomery_reduce(t2);
-    c->coeffs[i + 3] = montgomery_reduce(t3);
-  }
-}
-*/
 
 /*************************************************
 * Name:        poly_power2round
@@ -449,57 +432,25 @@ static unsigned int rej_eta(int32_t *a,
 #elif ETA == 4
 #define POLY_UNIFORM_ETA_NBLOCKS ((227 + STREAM256_BLOCKBYTES - 1)/STREAM256_BLOCKBYTES)
 #endif
-/*
- void poly_uniform_eta(poly *a,
-                      const uint8_t seed[CRHBYTES],
-                      uint16_t nonce)
-{
-  unsigned int ctr;
-  unsigned int buflen = POLY_UNIFORM_ETA_NBLOCKS*STREAM256_BLOCKBYTES;
-  uint8_t buf[POLY_UNIFORM_ETA_NBLOCKS*STREAM256_BLOCKBYTES];
-  stream256_state state;
-
-  stream256_init(&state, seed, nonce);
-  stream256_squeezeblocks(buf, POLY_UNIFORM_ETA_NBLOCKS, &state);
-
-  ctr = rej_eta(a->coeffs, N, buf, buflen);
-
-  while(ctr < N) {
-    stream256_squeezeblocks(buf, 1, &state);
-    ctr += rej_eta(a->coeffs + ctr, N - ctr, buf, STREAM256_BLOCKBYTES);
-  }
-}*/
-
-#include <stdio.h>
-
 void poly_uniform_eta(poly *a,
                       const uint8_t seed[CRHBYTES],
                       uint16_t nonce)
 {
-  printf("poly_uniform_eta START nonce=%d\n", nonce);
   unsigned int ctr;
   unsigned int buflen = POLY_UNIFORM_ETA_NBLOCKS*STREAM256_BLOCKBYTES;
   uint8_t buf[POLY_UNIFORM_ETA_NBLOCKS*STREAM256_BLOCKBYTES];
   stream256_state state;
 
   stream256_init(&state, seed, nonce);
-  printf("stream256_init DONE\n");
-
   stream256_squeezeblocks(buf, POLY_UNIFORM_ETA_NBLOCKS, &state);
-  printf("first squeeze DONE\n");
 
   ctr = rej_eta(a->coeffs, N, buf, buflen);
-  printf("rej_eta first returned ctr=%d\n", ctr);
 
   while(ctr < N) {
-    printf("rej_eta retry ctr=%d\n", ctr);
     stream256_squeezeblocks(buf, 1, &state);
     ctr += rej_eta(a->coeffs + ctr, N - ctr, buf, STREAM256_BLOCKBYTES);
   }
-
-  printf("poly_uniform_eta DONE\n");
 }
-
 
 /*************************************************
 * Name:        poly_uniform_gamma1m1
@@ -535,11 +486,12 @@ void poly_uniform_gamma1(poly *a,
 * Arguments:   - poly *c: pointer to output polynomial
 *              - const uint8_t mu[]: byte array containing seed of length CTILDEBYTES
 **************************************************/
-void  poly_challenge(poly *c, const uint8_t seed[CTILDEBYTES]) {
+void poly_challenge(poly *c, const uint8_t seed[CTILDEBYTES]) {
   unsigned int i, b, pos;
   uint64_t signs;
   uint8_t buf[SHAKE256_RATE];
   keccak_state state;
+
   shake256_init(&state);
   shake256_absorb(&state, seed, CTILDEBYTES);
   shake256_finalize(&state);
