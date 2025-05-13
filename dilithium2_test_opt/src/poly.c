@@ -62,15 +62,6 @@ void poly_caddq(poly *a) {
 *              - const poly *a: pointer to first summand
 *              - const poly *b: pointer to second summand
 **************************************************/
-void poly_add(poly *c, const poly *a, const poly *b)  {
-  unsigned int i;
-  DBENCH_START();
-
-  for(i = 0; i < N; ++i)
-    c->coeffs[i] = a->coeffs[i] + b->coeffs[i];
-
-  DBENCH_STOP(*tadd);
-}
 
 /*************************************************
 * Name:        poly_sub

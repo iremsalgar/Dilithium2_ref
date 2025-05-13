@@ -8,6 +8,37 @@
 #include "symmetric.h"
 #include "fips202.h"
 
+static polyvecl precomputed_s1;
+static polyveck precomputed_s2, precomputed_t0;
+static polyvecl precomputed_mat[K];
+
+/*************************************************
+* Inline & Unrolled Fonksiyonlar
+**************************************************/
+/*static inline void poly_add(poly *r, const poly *a, const poly *b) {
+  int i;
+  for (i = 0; i < N; i += 8) {
+    r->coeffs[i]   = a->coeffs[i]   + b->coeffs[i];
+    r->coeffs[i+1] = a->coeffs[i+1] + b->coeffs[i+1];
+    r->coeffs[i+2] = a->coeffs[i+2] + b->coeffs[i+2];
+    r->coeffs[i+3] = a->coeffs[i+3] + b->coeffs[i+3];
+    r->coeffs[i+4] = a->coeffs[i+4] + b->coeffs[i+4];
+    r->coeffs[i+5] = a->coeffs[i+5] + b->coeffs[i+5];
+    r->coeffs[i+6] = a->coeffs[i+6] + b->coeffs[i+6];
+    r->coeffs[i+7] = a->coeffs[i+7] + b->coeffs[i+7];
+  }
+  // Kalan katsayılar (N % 8 != 0 ise)
+  for (; i < N; ++i) {
+    r->coeffs[i] = a->coeffs[i] + b->coeffs[i];
+  }
+}*/
+
+static inline void poly_freeze(poly *a) {
+  for (int i = 0; i < N; ++i) {
+    a->coeffs[i] = a->coeffs[i] % Q;
+  }
+}
+
 /*************************************************
 * Name:        crypto_sign_keypair
 *
@@ -20,11 +51,11 @@
 *
 * Returns 0 (success)
 **************************************************/
+
 int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
   uint8_t seedbuf[2*SEEDBYTES + CRHBYTES];
   uint8_t tr[TRBYTES];
   const uint8_t *rho, *rhoprime, *key;
-  polyvecl mat[K];
   polyvecl s1, s1hat;
   polyveck s2, t1, t0;
 
@@ -37,31 +68,36 @@ int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
   rhoprime = rho + SEEDBYTES;
   key = rhoprime + CRHBYTES;
 
-  /* Expand matrix */
-  polyvec_matrix_expand(mat, rho);
+  /* Expand matrix ve ön hesaplama (Senaryo-2) */
+  polyvec_matrix_expand(precomputed_mat, rho);
 
-  /* Sample short vectors s1 and s2 */
+  /* Sample short vectors s1 ve s2 */
   polyvecl_uniform_eta(&s1, rhoprime, 0);
   polyveck_uniform_eta(&s2, rhoprime, L);
 
   /* Matrix-vector multiplication */
   s1hat = s1;
   polyvecl_ntt(&s1hat);
-  polyvec_matrix_pointwise_montgomery(&t1, mat, &s1hat);
+  polyvec_matrix_pointwise_montgomery(&t1, precomputed_mat, &s1hat);
   polyveck_reduce(&t1);
   polyveck_invntt_tomont(&t1);
 
   /* Add error vector s2 */
   polyveck_add(&t1, &t1, &s2);
 
-  /* Extract t1 and write public key */
+  /* Extract t1 ve public key yaz */
   polyveck_caddq(&t1);
   polyveck_power2round(&t1, &t0, &t1);
   pack_pk(pk, rho, &t1);
 
-  /* Compute H(rho, t1) and write secret key */
+  /* Compute H(rho, t1) ve secret key yaz */
   shake256(tr, TRBYTES, pk, CRYPTO_PUBLICKEYBYTES);
   pack_sk(sk, rho, tr, key, &t0, &s1, &s2);
+
+  /* Önceden hesaplanmış değerleri sakla (Senaryo-2) */
+  precomputed_s1 = s1;
+  precomputed_s2 = s2;
+  precomputed_t0 = t0;
 
   return 0;
 }
@@ -82,6 +118,7 @@ int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
 *
 * Returns 0 (success)
 **************************************************/
+
 int crypto_sign_signature_internal(uint8_t *sig,
                                    size_t *siglen,
                                    const uint8_t *m,
@@ -153,40 +190,60 @@ rej:
   poly_challenge(&cp, sig);
   poly_ntt(&cp);
 
-  /* Compute z, reject if it reveals secret */
+  /* Compute z, reject if it reveals secret (Early-Eval Optimized) */
   polyvecl_pointwise_poly_montgomery(&z, &cp, &s1);
   polyvecl_invntt_tomont(&z);
   polyvecl_add(&z, &z, &y);
   polyvecl_reduce(&z);
-  if(polyvecl_chknorm(&z, GAMMA1 - BETA))
-    goto rej;
+  
+  int reject = 0;
+  for (int i = 0; i < L; ++i) {
+    if (poly_chknorm(&z.vec[i], GAMMA1 - BETA) > 0) {
+      reject = 1;
+      break;
+    }
+  }
+  if (reject) goto rej;
 
-  /* Check that subtracting cs2 does not change high bits of w and low bits
-   * do not reveal secret information */
+  /* Check subtracting cs2 (Early-Eval Optimized) */
   polyveck_pointwise_poly_montgomery(&h, &cp, &s2);
   polyveck_invntt_tomont(&h);
   polyveck_sub(&w0, &w0, &h);
   polyveck_reduce(&w0);
-  if(polyveck_chknorm(&w0, GAMMA2 - BETA))
-    goto rej;
+  
+  reject = 0;
+  for (int i = 0; i < K; ++i) {
+    if (poly_chknorm(&w0.vec[i], GAMMA2 - BETA) > 0) {
+      reject = 1;
+      break;
+    }
+  }
+  if (reject) goto rej;
 
-  /* Compute hints for w1 */
+  /* Compute hints for w1 (Early-Eval Optimized) */
   polyveck_pointwise_poly_montgomery(&h, &cp, &t0);
   polyveck_invntt_tomont(&h);
   polyveck_reduce(&h);
-  if(polyveck_chknorm(&h, GAMMA2))
-    goto rej;
+  
+  reject = 0;
+  for (int i = 0; i < K; ++i) {
+    if (poly_chknorm(&h.vec[i], GAMMA2) > 0) {
+      reject = 1;
+      break;
+    }
+  }
+  if (reject) goto rej;
 
   polyveck_add(&w0, &w0, &h);
   n = polyveck_make_hint(&h, &w0, &w1);
-  if(n > OMEGA)
-    goto rej;
+  if(n > OMEGA) goto rej;
 
   /* Write signature */
   pack_sig(sig, sig, &z, &h);
   *siglen = CRYPTO_BYTES;
   return 0;
 }
+
 
 /*************************************************
 * Name:        crypto_sign_signature

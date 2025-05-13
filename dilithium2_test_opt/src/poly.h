@@ -14,7 +14,23 @@ void poly_reduce(poly *a);
 void poly_caddq(poly *a);
 
 #define poly_add DILITHIUM_NAMESPACE(poly_add)
-void poly_add(poly *c, const poly *a, const poly *b);
+static inline void poly_add(poly *r, const poly *a, const poly *b) {
+  int i;
+  for (i = 0; i < N; i += 8) {
+    r->coeffs[i]   = a->coeffs[i]   + b->coeffs[i];
+    r->coeffs[i+1] = a->coeffs[i+1] + b->coeffs[i+1];
+    r->coeffs[i+2] = a->coeffs[i+2] + b->coeffs[i+2];
+    r->coeffs[i+3] = a->coeffs[i+3] + b->coeffs[i+3];
+    r->coeffs[i+4] = a->coeffs[i+4] + b->coeffs[i+4];
+    r->coeffs[i+5] = a->coeffs[i+5] + b->coeffs[i+5];
+    r->coeffs[i+6] = a->coeffs[i+6] + b->coeffs[i+6];
+    r->coeffs[i+7] = a->coeffs[i+7] + b->coeffs[i+7];
+  }
+  for (; i < N; ++i) {
+    r->coeffs[i] = a->coeffs[i] + b->coeffs[i];
+  }
+}
+
 #define poly_sub DILITHIUM_NAMESPACE(poly_sub)
 void poly_sub(poly *c, const poly *a, const poly *b);
 #define poly_shiftl DILITHIUM_NAMESPACE(poly_shiftl)
